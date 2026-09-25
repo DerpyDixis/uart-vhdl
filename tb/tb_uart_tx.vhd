@@ -36,14 +36,12 @@ begin
 
         stimulus : process
 
-        -- Advance one rising edge, then allow outputs to settle.
         procedure tick is
         begin
             wait until rising_edge(clk);
             wait for 1 ns;
         end procedure;
 
-        -- Request one byte and check its complete serial frame.
         procedure send_and_check(
             constant payload : in std_logic_vector(7 downto 0)
         ) is
@@ -53,10 +51,10 @@ begin
             data  <= payload;
             start <= '1';
 
-            tick;  -- Request accepted; start bit begins.
+            tick; 
 
             start <= '0';
-            data  <= not payload;  -- Test that the byte was captured.
+            data  <= not payload;  
 
             for frame_bit in 0 to 9 loop
                 if frame_bit = 0 then
@@ -92,7 +90,6 @@ begin
         end procedure;
 
     begin
-        -- Initial reset.
         tick;
 
         assert tx = '1' and busy = '0' and done = '0'
@@ -108,8 +105,6 @@ begin
             report "Incorrect idle outputs"
             severity failure;
 
-        -- Each call begins a new transmission at the next rising
-        -- edge after the preceding transmission completed.
         send_and_check(x"00");
         send_and_check(x"FF");
         send_and_check(x"55");
@@ -122,7 +117,6 @@ begin
             report "done did not clear after completion"
             severity failure;
 
-        -- Begin another transmission, then interrupt its data bits.
         wait until falling_edge(clk);
         data  <= x"00";
         start <= '1';
@@ -147,7 +141,6 @@ begin
             report "Reset failed to abort transmission"
             severity failure;
 
-        -- Hold reset for another rising edge.
         tick;
 
         assert tx = '1' and busy = '0' and done = '0'
@@ -157,7 +150,6 @@ begin
         wait until falling_edge(clk);
         reset <= '0';
 
-        -- Confirm recovery using a complete new frame.
         send_and_check(x"96");
 
         tick;

@@ -10,7 +10,6 @@ architecture sim of tb_pulse_every_four is
     signal reset : std_logic := '1';
     signal pulse : std_logic;
 begin
-    -- A rising edge every 10 ns.
     clk <= not clk after 5 ns;
 
     dut : entity work.pulse_every_four
@@ -27,8 +26,7 @@ begin
 
         for edge_number in 1 to 12 loop
             wait until rising_edge(clk);
-            wait for 1 ns;  -- Allow the clocked process to update pulse.
-
+            wait for 1 ns; 
             if edge_number mod 4 = 0 then
                 assert pulse = '1'
                     report "Missing pulse at edge " & integer'image(edge_number)
