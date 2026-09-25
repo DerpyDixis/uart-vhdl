@@ -34,11 +34,66 @@ begin
             done  => done
         );
 
-    stimulus : process
-        variable expected_bit : std_logic;
+        stimulus : process
+
+        -- Advance one rising edge, then allow outputs to settle.
+        procedure tick is
+        begin
+            wait until rising_edge(clk);
+            wait for 1 ns;
+        end procedure;
+
+        -- Request one byte and check its complete serial frame.
+        procedure send_and_check(
+            constant payload : in std_logic_vector(7 downto 0)
+        ) is
+            variable expected_bit : std_logic;
+        begin
+            wait until falling_edge(clk);
+            data  <= payload;
+            start <= '1';
+
+            tick;  -- Request accepted; start bit begins.
+
+            start <= '0';
+            data  <= not payload;  -- Test that the byte was captured.
+
+            for frame_bit in 0 to 9 loop
+                if frame_bit = 0 then
+                    expected_bit := '0';
+                elsif frame_bit = 9 then
+                    expected_bit := '1';
+                else
+                    expected_bit := payload(frame_bit - 1);
+                end if;
+
+                for cycle in 1 to CLKS_PER_BIT loop
+                    assert tx = expected_bit
+                        report "Wrong tx for byte "
+                            & to_hstring(payload)
+                            & ", frame bit " & integer'image(frame_bit)
+                            & ", cycle " & integer'image(cycle)
+                        severity failure;
+
+                    assert busy = '1' and done = '0'
+                        report "Incorrect busy/done during transmission"
+                        severity failure;
+
+                    tick;
+                end loop;
+            end loop;
+
+            assert tx = '1' and busy = '0' and done = '1'
+                report "Incorrect completion outputs"
+                severity failure;
+
+            report "Passed byte " & to_hstring(payload)
+                severity note;
+        end procedure;
+
     begin
-        wait until rising_edge(clk);
-        wait for 1 ns;
+        -- Initial reset.
+        tick;
 
         assert tx = '1' and busy = '0' and done = '0'
             report "Incorrect reset outputs"
@@ -47,62 +102,73 @@ begin
         wait until falling_edge(clk);
         reset <= '0';
 
-        wait until rising_edge(clk);
-        wait for 1 ns;
+        tick;
 
         assert tx = '1' and busy = '0' and done = '0'
             report "Incorrect idle outputs"
             severity failure;
 
-        -- 0x53 test
-        wait until falling_edge(clk);
-        data  <= TEST_BYTE;
-        start <= '1';
+        -- Each call begins a new transmission at the next rising
+        -- edge after the preceding transmission completed.
+        send_and_check(x"00");
+        send_and_check(x"FF");
+        send_and_check(x"55");
+        send_and_check(x"AA");
+        send_and_check(x"53");
 
-        wait until rising_edge(clk);
-        wait for 1 ns;
-
-        start <= '0';
-        data  <= x"FF";
-
-        for frame_bit in 0 to 9 loop
-            if frame_bit = 0 then
-                expected_bit := '0';             -- Start bit
-            elsif frame_bit = 9 then
-                expected_bit := '1';             -- Stop bit
-            else
-                expected_bit := TEST_BYTE(frame_bit - 1);
-            end if;
-
-            for cycle in 1 to CLKS_PER_BIT loop
-                assert tx = expected_bit
-                    report "Wrong tx value at frame bit "
-                        & integer'image(frame_bit)
-                        & ", cycle " & integer'image(cycle)
-                    severity failure;
-
-                assert busy = '1' and done = '0'
-                    report "Incorrect busy/done during transmission"
-                    severity failure;
-
-                wait until rising_edge(clk);
-                wait for 1 ns;
-            end loop;
-        end loop;
-
-        assert tx = '1' and busy = '0' and done = '1'
-            report "Incorrect completion outputs"
-            severity failure;
-
-        wait until rising_edge(clk);
-        wait for 1 ns;
+        tick;
 
         assert tx = '1' and busy = '0' and done = '0'
-            report "done did not clear or transmitter did not return idle"
+            report "done did not clear after completion"
             severity failure;
 
-        report "PASS: TX frame, timing, data capture, and completion checked"
+        -- Begin another transmission, then interrupt its data bits.
+        wait until falling_edge(clk);
+        data  <= x"00";
+        start <= '1';
+
+        tick;
+        start <= '0';
+
+        for cycle in 1 to CLKS_PER_BIT + 3 loop
+            tick;
+        end loop;
+
+        assert busy = '1'
+            report "Transmitter was not busy before reset test"
+            severity failure;
+
+        wait until falling_edge(clk);
+        reset <= '1';
+
+        tick;
+
+        assert tx = '1' and busy = '0' and done = '0'
+            report "Reset failed to abort transmission"
+            severity failure;
+
+        -- Hold reset for another rising edge.
+        tick;
+
+        assert tx = '1' and busy = '0' and done = '0'
+            report "Outputs changed while reset was held"
+            severity failure;
+
+        wait until falling_edge(clk);
+        reset <= '0';
+
+        -- Confirm recovery using a complete new frame.
+        send_and_check(x"96");
+
+        tick;
+
+        assert tx = '1' and busy = '0' and done = '0'
+            report "Incorrect idle outputs after recovery"
+            severity failure;
+
+        report "PASS: multiple TX frames and reset recovery checked"
             severity note;
+
         stop;
         wait;
     end process;
