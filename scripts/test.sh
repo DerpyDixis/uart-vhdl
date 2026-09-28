@@ -13,17 +13,26 @@ nvc --std=2008 --work=work:build/nvc -a \
     tb/tb_uart_rx.vhd \
     tb/tb_uart_loopback.vhd
 
-for testbench in \
-    tb_pulse_every_four \
-    tb_uart_tx \
-    tb_uart_rx \
-    tb_uart_loopback
-do
-    echo "Running ${testbench}"
+echo "Running tb_pulse_every_four"
 
-    nvc --std=2008 --work=work:build/nvc -e "$testbench"
-    nvc --std=2008 --work=work:build/nvc -r "$testbench" \
-        --exit-severity=error
+nvc --std=2008 --work=work:build/nvc -e tb_pulse_every_four
+nvc --std=2008 --work=work:build/nvc -r tb_pulse_every_four \
+    --exit-severity=error
+
+for clocks_per_bit in 4 5 7 10 16 868
+do
+    for testbench in tb_uart_tx tb_uart_rx tb_uart_loopback
+    do
+        echo "Running ${testbench}, CLKS_PER_BIT=${clocks_per_bit}"
+
+        nvc --std=2008 --work=work:build/nvc \
+            -e "$testbench" -g CLKS_PER_BIT="$clocks_per_bit"
+
+        nvc --std=2008 --work=work:build/nvc \
+            -r "$testbench" --exit-severity=error
+    done
 done
+
+echo "PASS: pulse exercise and 18 UART test runs completed"
 
 echo "PASS: all four testbenches completed"

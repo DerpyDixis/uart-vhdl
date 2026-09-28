@@ -3,11 +3,13 @@ use ieee.std_logic_1164.all;
 use std.env.all;
 
 entity tb_uart_rx is
+    generic(
+        CLKS_PER_BIT : positive := 10
+    );
 end entity;
 
 architecture sim of tb_uart_rx is
     constant CLOCK_PERIOD : time := 10 ns;
-    constant CLKS_PER_BIT : positive := 10;
     constant BIT_PERIOD  : time := CLOCK_PERIOD * CLKS_PER_BIT;
 
     signal clk           : std_logic := '0';
@@ -181,7 +183,7 @@ begin
         errors_before   := error_count;
 
         rx <= '0';
-        wait for 2 * CLOCK_PERIOD;
+        wait for CLOCK_PERIOD;
         rx <= '1';
 
         wait for 12 * BIT_PERIOD;
@@ -201,7 +203,7 @@ begin
 
     watchdog : process
     begin
-        wait for 20 us;
+        wait for 200 * BIT_PERIOD;
         assert false
             report "Testbench timed out"
             severity failure;

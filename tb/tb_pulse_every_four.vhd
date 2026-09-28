@@ -42,4 +42,12 @@ begin
         stop;
         wait;
     end process;
+    watchdog : process
+    begin
+        wait for 1 us;
+        assert false
+            report "Pulse-generator testbench timed out"
+            severity failure;
+        wait;
+    end process;
 end architecture;

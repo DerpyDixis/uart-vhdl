@@ -4,11 +4,13 @@ use ieee.numeric_std.all;
 use std.env.all;
 
 entity tb_uart_loopback is
+    generic(
+        CLKS_PER_BIT : positive := 10
+    );
 end entity;
 
 architecture sim of tb_uart_loopback is
     constant CLOCK_PERIOD : time := 10 ns;
-    constant CLKS_PER_BIT : positive := 10;
 
     signal clk           : std_logic := '0';
     signal reset         : std_logic := '1';
@@ -136,7 +138,7 @@ begin
 
     watchdog : process
     begin
-        wait for 1 ms;
+        wait for 300 * (10 * CLKS_PER_BIT + 20) * CLOCK_PERIOD;
         assert false
             report "Loopback test timed out"
             severity failure;
