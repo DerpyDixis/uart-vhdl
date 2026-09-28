@@ -95,12 +95,14 @@ begin
 
     stimulus : process
         procedure send_and_check(
-            constant payload  : in std_logic_vector(7 downto 0);
-            constant bad_stop : in boolean := false
+            constant payload           : in std_logic_vector(7 downto 0);
+            constant bad_stop          : in boolean := false;
+            constant sender_bit_period : in time := BIT_PERIOD
         ) is
             variable received_before : natural;
             variable errors_before   : natural;
             variable data_before     : std_logic_vector(7 downto 0);
+            
         begin
             received_before := received_count;
             errors_before   := error_count;
@@ -110,11 +112,11 @@ begin
             expect_error  <= bad_stop;
 
             rx <= '0';
-            wait for BIT_PERIOD;
+            wait for sender_bit_period;
 
             for bit_number in 0 to 7 loop
                 rx <= payload(bit_number);
-                wait for BIT_PERIOD;
+                wait for sender_bit_period;
             end loop;
 
             if bad_stop then
@@ -122,7 +124,7 @@ begin
             else
                 rx <= '1';
             end if;
-            wait for BIT_PERIOD;
+            wait for sender_bit_period;
 
             rx <= '1';
             wait for BIT_PERIOD;
@@ -161,6 +163,7 @@ begin
 
         variable received_before : natural;
         variable errors_before   : natural;
+        variable selected_period : time;
     begin
         wait until rising_edge(clk);
         wait until rising_edge(clk);
@@ -179,6 +182,42 @@ begin
 
         send_and_check(x"96");
 
+        for rate_case in 0 to 2 loop
+            case rate_case is
+                when 0 =>
+                    selected_period := BIT_PERIOD;
+
+                when 1 =>
+                    selected_period := BIT_PERIOD * 100 / 102;
+
+                when 2 =>
+                    selected_period := BIT_PERIOD * 100 / 98;
+            end case;
+
+            for phase in 0 to 9 loop
+                report "RX timing: rate case "
+                    & integer'image(rate_case)
+                    & ", phase index " & integer'image(phase)
+                    severity note;
+
+                wait until rising_edge(clk);
+                wait for phase * 1 ns + 500 ps;
+
+                send_and_check(
+                    payload           => x"55",
+                    sender_bit_period => selected_period
+                );
+
+                wait until rising_edge(clk);
+                wait for phase * 1 ns + 500 ps;
+
+                send_and_check(
+                    payload           => x"AA",
+                    sender_bit_period => selected_period
+                );
+            end loop;
+        end loop;
+
         received_before := received_count;
         errors_before   := error_count;
 
@@ -194,7 +233,7 @@ begin
             severity failure;
 
         report "Passed false-start test" severity note;
-        report "PASS: RX data, framing errors, recovery, and false start checked"
+        report "PASS: RX data, errors, recovery, false start, and timing sweep checked"
             severity note;
 
         stop;
@@ -203,7 +242,7 @@ begin
 
     watchdog : process
     begin
-        wait for 200 * BIT_PERIOD;
+        wait for 2000 * BIT_PERIOD;
         assert false
             report "Testbench timed out"
             severity failure;
