@@ -45,7 +45,9 @@ begin
         end procedure;
 
         procedure send_and_check(
-            constant payload : in std_logic_vector(7 downto 0)
+            constant payload             : in std_logic_vector(7 downto 0);
+            constant inject_busy_request : in boolean := false;
+            constant keep_start_high     : in boolean := false
         ) is
             variable expected_bit : std_logic;
         begin
@@ -54,8 +56,10 @@ begin
             start <= '1';
 
             tick; 
-
-            start <= '0';
+            
+            if not keep_start_high then
+                start <= '0';
+            end if;
             data  <= not payload;  
 
             for frame_bit in 0 to 9 loop
@@ -78,7 +82,13 @@ begin
                     assert busy = '1' and done = '0'
                         report "Incorrect busy/done during transmission"
                         severity failure;
-
+                        if inject_busy_request then
+                            if frame_bit = 3 and cycle = 1 then
+                                start <= '1';
+                            elsif frame_bit = 3 and cycle = 2 then
+                                start <= '0';
+                            end if;
+                        end if;
                     tick;
                 end loop;
             end loop;
@@ -161,6 +171,40 @@ begin
             severity failure;
 
         report "PASS: multiple TX frames and reset recovery checked"
+            severity note;
+        
+        send_and_check(
+            payload             => x"C3",
+            inject_busy_request => true
+        );
+
+        for cycle in 1 to 10 * CLKS_PER_BIT + 2 loop
+            tick;
+
+            assert tx = '1' and busy = '0' and done = '0'
+                report "Busy-time request caused an extra transmission"
+                severity failure;
+        end loop;
+
+        report "Passed ignored busy-time request test" severity note;
+
+        send_and_check(
+            payload         => x"12",
+            keep_start_high => true
+        );
+
+
+        send_and_check(x"34");
+
+        tick;
+
+        assert tx = '1' and busy = '0' and done = '0'
+            report "Incorrect idle outputs after held-start test"
+            severity failure;
+
+        report "Passed held-high start test" severity note;
+
+        report "PASS: TX frames, reset recovery, and start-request behavior checked"
             severity note;
 
         stop;

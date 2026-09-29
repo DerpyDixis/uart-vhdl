@@ -48,3 +48,14 @@ Simulation artifacts build into `build/nvc/`. The test suite covers:
 - [ ] 3-sample majority voting on RX data bits (currently single center-sample)
 - [ ] TX/RX FIFOs to decouple transmission from byte-by-byte polling
 - [ ] Test bench for clock phase offsets and small ±% baud mismatches
+
+## TX request behavior
+
+- Assert `start` with valid `data` before a rising clock edge while
+  `busy` is low. TX captures the byte on that edge.
+- A request sampled while TX is busy is ignored and is not queued.
+- `start` is level-sensitive. If it remains high, TX accepts another
+  byte on the next rising edge after completing the previous frame.
+  It captures the value of `data` present at that new acceptance edge.
+- For one transmission, drive `start` high for one clock cycle.
+- `done` pulses for one clock cycle when the full stop-bit period ends.
