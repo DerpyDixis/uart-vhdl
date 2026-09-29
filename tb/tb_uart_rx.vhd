@@ -233,7 +233,65 @@ begin
             severity failure;
 
         report "Passed false-start test" severity note;
-        report "PASS: RX data, errors, recovery, false start, and timing sweep checked"
+
+        received_before := received_count;
+        errors_before   := error_count;
+        expect_error    <= true;
+
+        rx <= '0';
+        wait for 30 * BIT_PERIOD;
+
+        assert received_count = received_before
+            report "Prolonged low input produced a valid byte"
+            severity failure;
+
+        assert error_count = errors_before + 1
+            report "Expected exactly one error while input stayed low"
+            severity failure;
+
+        rx <= '1';
+        wait for 2 * BIT_PERIOD;
+
+        assert received_count = received_before
+            and error_count = errors_before + 1
+            report "Unexpected event while recovering from low input"
+            severity failure;
+
+        report "Passed prolonged-low recovery test" severity note;
+
+        send_and_check(x"3C");
+
+        expect_error <= false;
+        rx <= '0';
+
+        wait for 3 * BIT_PERIOD;
+
+        wait until falling_edge(clk);
+        reset <= '1';
+        rx    <= '1';  
+        wait until rising_edge(clk);
+        wait until rising_edge(clk);
+        wait until falling_edge(clk);
+        reset <= '0';
+
+        wait for 12 * BIT_PERIOD;
+
+        assert received_count = 0 and error_count = 0
+            report "Aborted frame produced an event after reset"
+            severity failure;
+
+        assert data = x"00"
+            and data_valid = '0'
+            and framing_error = '0'
+            report "Incorrect outputs after RX reset"
+            severity failure;
+
+        send_and_check(x"C3");
+
+        report "Passed RX mid-frame reset and recovery test"
+            severity note;
+
+        report "PASS: RX data, timing, framing errors, low-input recovery, and reset checked"
             severity note;
 
         stop;
