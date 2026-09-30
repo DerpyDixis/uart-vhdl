@@ -1,53 +1,100 @@
 # VHDL-2008 UART (8N1)
 
-A basic 8N1 UART core (transmitter, receiver, and internal loopback) written in VHDL-2008 to practice RTL state machines, clock divider timing, and writing self-checking testbenches
+[![VHDL tests](https://github.com/rishiram-eng/uart-vhdl/actions/workflows/test.yml/badge.svg)](https://github.com/rishiram-eng/uart-vhdl/actions/workflows/test.yml)
 
-## Implementation Details
+A configurable UART transmitter and receiver implemented in VHDL-2008,
+with self-checking testbenches, an internal loopback wrapper, and
+automated regression testing through GitHub Actions.
 
-- **Format:** 8 data bits, no parity, 1 stop bit (LSB first)
-- **Timing:** Configured via a `CLKS_PER_BIT` generic (`baud = f_clk / CLKS_PER_BIT`)
-- **RX Synchronization & Sampling:** RX input passes through a 2-stage synchronizer to mitigate metastability. A start bit is confirmed halfway through bit 0 (`CLKS_PER_BIT / 2`); subsequent data and stop bits are sampled at their midpoints
-- **Error Handling:** RX flags framing errors if the stop bit isn't high, then returns to `IDLE` on the next detected rising edge/idle period
-- **Resets:** Fully synchronous, active-high throughout
+The project demonstrates RTL state machines, serial communication,
+input synchronization, and simulation-based verification.
 
-> **Note on baud divider:** `CLKS_PER_BIT` must be ≥ 4 for the mid-bit sampler to resolve cleanly. Non-integer ratios will introduce slight baud frequency error
+## Design
 
-## Repo Structure
+- **Format:** One start bit, eight data bits transmitted LSB first, 
+no parity, and one stop bit
+- **Timing:** A `CLKS_PER_BIT` generic sets the bit duration:
+  `baud = clock_frequency / CLKS_PER_BIT`
+- **Receiver:** A two-stage input synchronizer followed by start-bit
+  confirmation and one sample per data/stop bit near its center.
+  Sampling timing includes synchronization delay and clock quantization
+- **Framing errors:** A low stop-bit sample raises `framing_error`
+  The receiver then waits for the synchronized input to return high
+- **Reset:** Synchronous and active high
+- **TX requests:** Input data is captured when a request is accepted.
+  Requests while busy are ignored. Holding start high can initiate
+  another frame when TX returns to idle
 
-```text
-├── rtl/
-│   ├── uart_tx.vhd           # Serializer / FSM
-│   ├── uart_rx.vhd           # Deserializer, 2FF sync, center-sampling
-│   ├── uart_loopback.vhd     # TX-to-RX top-level wrapper
-│   └── pulse_every_four.vhd  # Initial clock divider test module
-├── tb/                       # Self-checking testbenches
-└── scripts/
-    └── test.sh               # Runs NVC simulation flow
+The receiver requires `CLKS_PER_BIT >= 4`. When the desired clock-to-baud
+ratio is not an integer, the selected divider introduces baud-rate error.
+
+## Repository Structure
+
+- `rtl/uart_tx.vhd` — UART transmitter
+- `rtl/uart_rx.vhd` — UART receiver
+- `rtl/uart_loopback.vhd` — Internal TX-to-RX connection
+- `rtl/pulse_every_four.vhd` — Introductory counter/pulse exercise
+- `tb/` — Self-checking testbenches
+- `scripts/test.sh` — Full regression
+- `scripts/waves.sh` — Loopback waveform generation
+- `docs/verification.md` — Verification details and limitations
+- `.github/workflows/test.yml` — GitHub Actions workflow
+
+## Run the Tests
+
+Requires [NVC](https://github.com/nickg/nvc) and Bash.
+Run from the repository root:
+
+```bash
+bash scripts/test.sh
 ```
 
-## Running Simulations
+The regression runs four UART testbenches at each of six
+`CLKS_PER_BIT` values: 4, 5, 7, 10, 16, and 868.
 
-Requires [NVC](https://github.com/nickg/nvc) and Bash
+Together with the introductory pulse test, this produces 25 testbench
+runs. All testbenches use a 10 ns clock period.
 
-```sh
-./scripts/test.sh
+Coverage includes:
+
+- TX bit values, bit durations, data capture, and request behavior
+- Reset during transmission and reception
+- Selected false-start, framing-error, and prolonged-low scenarios
+- All 256 byte values through internal loopback
+- All 256 byte values in consecutive RX frames
+- Nominal and ±2% sender baud rates at ten start-phase offsets,
+  using 0x55 and 0xAA
+
+GitHub Actions runs the same regression on pushes and pull requests.
+Assertion failures cause the job to fail.
+
+See [Verification](docs/verification.md) for detailed coverage,
+interface behavior, and limitations.
+
+## Inspect Waveforms
+
+```bash
+bash scripts/waves.sh
 ```
 
-Simulation artifacts build into `build/nvc/`. The test suite covers:
-- Mid-bit TX/RX timing and pulse widths
-- Mid-frame synchronous reset behavior
-- False-start rejection on glitches < 0.5 bit periods
-- Framing error detection and re-sync on missing stop bits
-- 256-byte exhaustive loopback (`0x00` to `0xFF`)
+Open `build/waves/uart_loopback.vcd` in a waveform viewer such as Surfer.
 
-*Simulations currently run at `CLKS_PER_BIT = 10` on a 100 MHz clock (10 ns period) for fast iteration (10 Mbaud equivalent)*
+This waveform run uses `CLKS_PER_BIT=10`: 100 ns per bit and
+1 microsecond per 8N1 frame.
 
-## To-Do / Known Scope Limits
+Generated simulation files are stored under `build/` and excluded
+from Git.
 
-- [ ] Synthesis run and timing closure on hardware
-- [ ] 3-sample majority voting on RX data bits (currently single center-sample)
-- [ ] TX/RX FIFOs to decouple transmission from byte-by-byte polling
-- [ ] Test bench for clock phase offsets and small ±% baud mismatches
+## Verification Status and Scope
 
-See [Verification](docs/verification.md) for test coverage, interface
-behavior, waveform instructions, and limitations.
+The design has been verified in RTL simulation using NVC, including
+automated runs on GitHub Actions.
+
+FPGA synthesis, implementation timing, and physical-board operation
+have not been verified. The simulated 100 MHz clock is a testbench
+setting, not a demonstrated hardware operating frequency.
+
+The design does not include parity, FIFOs, hardware flow control, or
+majority-vote sampling. Digital simulation does not model analog
+metastability, and the timing sweep does not establish maximum
+baud-mismatch tolerance.
