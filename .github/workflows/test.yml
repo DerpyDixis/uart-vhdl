@@ -1,0 +1,32 @@
+name: VHDL tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulation:
+    name: NVC regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install NVC
+        uses: nickg/setup-nvc@v1
+        with:
+          version: latest
+
+      - name: Show simulator version
+        run: nvc --version
+
+      - name: Run all tests
+        run: bash scripts/test.sh
